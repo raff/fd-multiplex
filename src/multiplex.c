@@ -25,6 +25,12 @@
 #include <string.h>
 #include <time.h>
 #include <fcntl.h>
+#include <unistd.h>
+
+#ifdef __APPLE__
+#include <sys/select.h>
+#endif
+
 #include "multiplex.h"
 
 // ----------------------------------------------------------------------

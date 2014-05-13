@@ -1,6 +1,7 @@
 #include <multiplex.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 
 static int c = 0;

@@ -44,12 +44,12 @@ typedef struct ChannelBuffer {
 } ChannelBuffer;
 
 typedef struct Multiplex {
-    int fd;                                // file descriptor
-    int max_channels;			   // maximum number of channels
-    int is_socket;			   // use socket send/recv
-    struct ChannelBuffer * channels[256];  // O(1) lookup for channels
+    int fd;                                         // file descriptor
+    int max_channels;			            // maximum number of channels
+    int is_socket;			            // use socket send/recv
+    struct ChannelBuffer * channels[MAX_CHANNELS];  // O(1) lookup for channels
 #ifndef NO_MUTEX
-    pthread_mutex_t mutex;                 // for exclusive access
+    pthread_mutex_t mutex;                          // for exclusive access
 #endif
 } Multiplex;
 

@@ -1,17 +1,17 @@
 /* The MIT License (MIT)
- * 
+ *
  * Copyright (c) 2013 Yannick Scherer
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
  * the Software without restriction, including without limitation the rights to
  * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
  * the Software, and to permit persons to whom the Software is furnished to do so,
  * subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
  * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
@@ -33,6 +33,8 @@
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <winsock2.h>
+#else
+#include <sys/socket.h>
 #endif
 
 #include "multiplex.h"
@@ -44,7 +46,7 @@
 // ----------------------------------------------------------------------
 // We assume that packet fragments arrive in-order on the given file
 // descriptor. By prefixing a packet with 4 bytes of length (aligned
-// right, zero left-padded, includes length of channel ID) and a single 
+// right, zero left-padded, includes length of channel ID) and a single
 // byte containing the channel ID, we can reassemble the packet and
 // decide which channel it belongs to.
 //
@@ -102,6 +104,7 @@ Multiplex * multiplex_new(int fd) {
 }
 
 Multiplex * multiplex_new_ex(int fd, int max_channels, int is_socket) {
+    if (max_channels < 0 || max_channels > MAX_CHANNELS) return 0;
     Multiplex * m = (Multiplex *)calloc(1, sizeof(Multiplex));
     if (m != 0) {
         if (pthread_mutex_init(&(m->mutex), 0) != 0) {
@@ -117,7 +120,7 @@ Multiplex * multiplex_new_ex(int fd, int max_channels, int is_socket) {
 
 // -- ACTIVATE CHANNEL
 static void _enable_channel(Multiplex * c, unsigned char channelId, int initialBufferSize) {
-    if (c != 0 && channelId >= 0 && channelId <= 255 && c->channels[channelId] == 0) {
+    if (c != 0 && channelId >= 0 && channelId <= (c->max_channels-1) && c->channels[channelId] == 0) {
         ChannelBuffer * buf = (ChannelBuffer *)calloc(1, sizeof(ChannelBuffer));
         if (buf != 0) {
             int size = initialBufferSize > 0 ? initialBufferSize : CHANNEL_INITIAL_BUFFER_SIZE;
@@ -144,7 +147,7 @@ void multiplex_enable(Multiplex * c, unsigned char channelId, int initialBufferS
 void multiplex_enable_range(Multiplex * c, unsigned char minChannel, unsigned char maxChannel, int initialBufferSize) {
     if (multiplex_lock(c) == 0) {
         int i;
-        for (i = minChannel; i <= maxChannel; ++i) 
+        for (i = minChannel; i <= maxChannel; ++i)
             _enable_channel(c, i, initialBufferSize);
         multiplex_unlock(c);
     }
@@ -185,7 +188,7 @@ static int _reallocate_channel(Multiplex * c, unsigned char channelId, int addit
             // Case 3: move data within buffer (set offset to 0)
             if (buf->capacity >= buf->length + additionalDataSize) {
                 if (buf->offset > 0) {
-                    int i = 0; 
+                    int i = 0;
                     while (i < buf->length) {
                         buf->data[i] = buf->data[buf->offset + i];
                     }
@@ -288,11 +291,11 @@ void multiplex_clear(Multiplex * c, unsigned char channelId) {
 }
 
 // ----------------------------------------------------------------------
-// 
+//
 //   RECEIVE LOGIC
 //
 // ----------------------------------------------------------------------
-static int _fd_read(int fd, int timeoutMs, char * buffer, int length) {
+static int _fd_read(int fd, int is_socket, int timeoutMs, char * buffer, int length) {
     int position = 0, bytesRead = 0, selectResult = -1;
     struct timeval timeout;
     fd_set fds;
@@ -307,7 +310,11 @@ static int _fd_read(int fd, int timeoutMs, char * buffer, int length) {
         if (selectResult == 0) return CHANNEL_TIMEOUT;
 
         if (FD_ISSET(fd,&fds)) {
-            bytesRead = read(fd, buffer + position, length - position);
+            if (is_socket) {
+                bytesRead = recv(fd, buffer + position, length - position, 0);
+            } else {
+                bytesRead = read(fd, buffer + position, length - position);
+            }
             if (bytesRead <= 0) return CHANNEL_CLOSED;
             else position += bytesRead;
         }
@@ -327,7 +334,7 @@ static int _select_channel(Multiplex * c, int timeoutMs) {
     {
         int i = 0;
         ChannelBuffer * buf = 0;
-        for (; i < 256; ++i) {
+        for (; i < c->max_channels; ++i) {
             buf = c->channels[i];
             if (buf != 0 && buf->length > 0 && buf->newData != 0) {
                 buf->newData = 0;
@@ -337,15 +344,15 @@ static int _select_channel(Multiplex * c, int timeoutMs) {
     }
 
     //
-    bytesRead = _fd_read(c->fd, timeoutMs, prefixBuffer, 5); 
+    bytesRead = _fd_read(c->fd, c->is_socket, timeoutMs, prefixBuffer, 5);
     if (bytesRead != 5) return bytesRead;
 
     //
-    dataLength = (prefixBuffer[0] << 24) | (prefixBuffer[1] << 16) | (prefixBuffer[2] << 8) | prefixBuffer[3];
+    dataLength = (prefixBuffer[0] << 24) | (prefixBuffer[1] << 16) | (prefixBuffer[2] << 8) | (prefixBuffer[3] << 0);
     channelId = (unsigned char)prefixBuffer[4];
     {
         char buffer[dataLength - 1];
-        bytesRead = _fd_read(c->fd, timeoutMs, buffer, dataLength - 1);
+        bytesRead = _fd_read(c->fd, c->is_socket, timeoutMs, buffer, dataLength - 1);
         if (bytesRead != dataLength - 1) return bytesRead;
         if (c->channels[channelId] == 0) return CHANNEL_IGNORED;
         _write_channel(c, channelId, buffer, 0, dataLength - 1);
@@ -432,8 +439,8 @@ int multiplex_send(Multiplex * c, unsigned char channelId, char const * src, int
         char buffer[5 + length];
         buffer[0] = (char)((len >> 24) & 0xFF);
         buffer[1] = (char)((len >> 16) & 0xFF);
-        buffer[2] = (char)((len >> 8) & 0xFF);
-        buffer[3] = (char)(len & 0xFF);
+        buffer[2] = (char)((len >>  8) & 0xFF);
+        buffer[3] = (char)((len >>  0) & 0xFF);
         buffer[4] = (char)(channelId & 0xFF);
         memcpy(buffer + 5, src, length);
 	if (c->is_socket) {
@@ -444,7 +451,7 @@ int multiplex_send(Multiplex * c, unsigned char channelId, char const * src, int
         multiplex_unlock(c);
         return len;
     }
-} 
+}
 
 int multiplex_send_string(Multiplex * c, unsigned char channelId, char const * str) {
     if (str == 0) return -1;

@@ -98,6 +98,10 @@ static int multiplex_lock_channel(Multiplex * c, unsigned char channelId) {
 // ----------------------------------------------------------------------
 // -- CREATE
 Multiplex * multiplex_new(int fd) {
+    return multiplex_new_ex(fd, MAX_CHANNELS, 0);
+}
+
+Multiplex * multiplex_new_ex(int fd, int max_channels, int is_socket) {
     Multiplex * m = (Multiplex *)calloc(1, sizeof(Multiplex));
     if (m != 0) {
         if (pthread_mutex_init(&(m->mutex), 0) != 0) {
@@ -105,6 +109,8 @@ Multiplex * multiplex_new(int fd) {
             return 0;
         }
         m->fd = fd;
+	m->max_channels = max_channels;
+	m->is_socket = is_socket;
     }
     return m;
 }
@@ -430,7 +436,11 @@ int multiplex_send(Multiplex * c, unsigned char channelId, char const * src, int
         buffer[3] = (char)(len & 0xFF);
         buffer[4] = (char)(channelId & 0xFF);
         memcpy(buffer + 5, src, length);
-        len = write(c->fd, buffer, 5 + length);
+	if (c->is_socket) {
+	    len = send(c->fd, buffer, 5 + length, 0);
+	} else {
+	    len = write(c->fd, buffer, 5 + length);
+	}
         multiplex_unlock(c);
         return len;
     }

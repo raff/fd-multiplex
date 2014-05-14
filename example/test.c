@@ -21,7 +21,8 @@ int inet_pton(int af, const char *src, void *dst) {
 }
 
 void print_error(const char *msg) {
-    fprintf(stderr, "%s: %d\n", msg, h_errno);
+    int error = h_errno ? h_errno : errno;
+    fprintf(stderr, "%s: %d\n", msg, error);
 }
 #else
 #include <sys/socket.h>
@@ -38,7 +39,7 @@ int c = 0;
 void * serve_connection(void *arg) {
     int conn = *((int *) arg);
 
-    Multiplex * m = multiplex_new(conn);
+    Multiplex * m = multiplex_new_ex(conn, 4, 1);
     multiplex_enable_range(m, 0, 255, 256);
 
     int selected = 0;
@@ -148,7 +149,7 @@ int run_client(char *server, int port)
     char buffer[256];
     int ch = 0;
     int i;
-    Multiplex * m = multiplex_new(sockfd);
+    Multiplex * m = multiplex_new_ex(sockfd, 4, 1);
     multiplex_enable_range(m, 0, 255, 256);
 
     srand(time(0));
@@ -156,7 +157,9 @@ int run_client(char *server, int port)
     for (i=0; i<100; i++) {
         ch = rand()%256;
         sprintf(buffer, "From client to channel %d.", ch);
-        multiplex_send(m, ch, buffer, strlen(buffer));
+        if (multiplex_send(m, ch, buffer, strlen(buffer)) < 0) {
+	    print_error("client send");
+	}
 
         int selected = multiplex_select(m, 2000);
         if (selected >= 0) {

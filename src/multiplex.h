@@ -28,6 +28,8 @@
 #define CHANNEL_TIMEOUT -77
 #define CHANNEL_CLOSED  -1
 
+#define MAX_CHANNELS 256
+
 #ifndef NO_MUTEX
 #include <pthread.h>
 #endif
@@ -43,6 +45,8 @@ typedef struct ChannelBuffer {
 
 typedef struct Multiplex {
     int fd;                                // file descriptor
+    int max_channels;			   // maximum number of channels
+    int is_socket;			   // use socket send/recv
     struct ChannelBuffer * channels[256];  // O(1) lookup for channels
 #ifndef NO_MUTEX
     pthread_mutex_t mutex;                 // for exclusive access
@@ -51,6 +55,7 @@ typedef struct Multiplex {
 
 // Multiplexing Operations (these are not thread-safe!)
 Multiplex * multiplex_new(int fd);
+Multiplex * multiplex_new_ex(int fd, int max_channels, int is_socket);
 void multiplex_enable(Multiplex * c, unsigned char channelId, int initialBufferSize);
 void multiplex_enable_range(Multiplex * c, unsigned char minChannelId, unsigned char maxChannelId, int initialBufferSize);
 void multiplex_disable(Multiplex * c, unsigned char channelId);

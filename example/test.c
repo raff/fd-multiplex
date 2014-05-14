@@ -32,15 +32,18 @@ void print_error(const char *msg) {
 #endif
 
 #define PORT 5000
-#define MAX_CONN 10
+#define MAX_CONN 4
+
+// 0: read/write, 1: recv/send
+#define USE_SOCKETS 1
 
 int c = 0;
 
 void * serve_connection(void *arg) {
     int conn = *((int *) arg);
 
-    Multiplex * m = multiplex_new_ex(conn, 4, 1);
-    multiplex_enable_range(m, 0, 255, 256);
+    Multiplex * m = multiplex_new_ex(conn, MAX_CONN, USE_SOCKETS);
+    multiplex_enable_range(m, 0, MAX_CONN, 256);
 
     int selected = 0;
     char * buffer;
@@ -149,13 +152,13 @@ int run_client(char *server, int port)
     char buffer[256];
     int ch = 0;
     int i;
-    Multiplex * m = multiplex_new_ex(sockfd, 4, 1);
-    multiplex_enable_range(m, 0, 255, 256);
+    Multiplex * m = multiplex_new_ex(sockfd, MAX_CONN, USE_SOCKETS);
+    multiplex_enable_range(m, 0, MAX_CONN, 256);
 
     srand(time(0));
 
     for (i=0; i<100; i++) {
-        ch = rand()%256;
+        ch = rand() % MAX_CONN;
         sprintf(buffer, "From client to channel %d.", ch);
         if (multiplex_send(m, ch, buffer, strlen(buffer)) < 0) {
 	    print_error("client send");

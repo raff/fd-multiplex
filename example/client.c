@@ -22,6 +22,7 @@ static void * receive_on_channel(void * mPtr) {
         }
     }
 
+    return (void *)0;
 }
 
 int main(int argc, char * argv[]) {

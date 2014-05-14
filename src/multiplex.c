@@ -31,6 +31,10 @@
 #include <sys/select.h>
 #endif
 
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include <winsock2.h>
+#endif
+
 #include "multiplex.h"
 
 // ----------------------------------------------------------------------

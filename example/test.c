@@ -1,6 +1,3 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,6 +6,29 @@
 #include <sys/types.h>
 #include <time.h> 
 #include <multiplex.h>
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include <winsock2.h>
+
+int inet_pton(int af, const char *src, void *dst) {
+    int addr = inet_addr(src);
+    if (addr == -1) {
+    	return -1;
+    }
+
+    *((int *) dst) = addr;
+    return 1;
+}
+
+void print_error(const char *msg) {
+    fprintf(stderr, "%s: %d\n", msg, h_errno);
+}
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#define print_error perror
+#endif
 
 #define PORT 5000
 #define MAX_CONN 10
@@ -26,7 +46,9 @@ void * serve_connection(void *arg) {
     const int cc = ++c;
 
     while (selected != CHANNEL_CLOSED) {
+	fputs("selecting...", stderr);
         selected = multiplex_select(m, 2000);
+	fprintf(stderr, "selected %d\n", selected);
         if (selected >= 0) {
             buffer = multiplex_strdup(m, selected);
             printf("%d:[channel:%03d] %s\n", cc, selected, buffer);
@@ -40,6 +62,8 @@ void * serve_connection(void *arg) {
             usleep(rand() % 1000000);
         }
     }
+
+    fputs("closing connection", stderr);
 
     close(conn);
     return (void *)0;
@@ -64,8 +88,15 @@ int run_server(int port)
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(port); 
 
-    bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)); 
-    listen(listenfd, MAX_CONN); 
+    if (bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+	print_error("bind");
+	return 1;
+    }
+
+    if (listen(listenfd, MAX_CONN) < 0) {
+	print_error("listen");
+	return 1;
+    }
 
     while(1)
     {
@@ -73,6 +104,8 @@ int run_server(int port)
          * Accept new connection
          */
         connfd = accept(listenfd, (struct sockaddr*)NULL, NULL); 
+
+	fprintf(stderr, "accepted %d\n", connfd);
 
         pthread_t thr;
         pthread_create(&thr, 0, &serve_connection, (void *) &connfd);
@@ -91,7 +124,7 @@ int run_client(char *server, int port)
     memset(recvBuff, '0',sizeof(recvBuff));
     if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
-        printf("\n Error : Could not create socket \n");
+        print_error("create socket");
         return 1;
     } 
 
@@ -102,24 +135,25 @@ int run_client(char *server, int port)
 
     if(inet_pton(AF_INET, server, &serv_addr.sin_addr)<=0)
     {
-        printf("\n inet_pton error occured\n");
+        print_error("inet_pton");
         return 1;
     } 
 
-    if( connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
-       printf("\n Error : Connect Failed \n");
+       print_error("connect");
        return 1;
     } 
 
     char buffer[256];
     int ch = 0;
+    int i;
     Multiplex * m = multiplex_new(sockfd);
     multiplex_enable_range(m, 0, 255, 256);
 
     srand(time(0));
 
-    for (int i=0; i<100; i++) {
+    for (i=0; i<100; i++) {
         ch = rand()%256;
         sprintf(buffer, "From client to channel %d.", ch);
         multiplex_send(m, ch, buffer, strlen(buffer));
@@ -146,6 +180,11 @@ int main(int argc, char **argv) {
        return 1;
    } 
 
+#if defined(__MINGW32__) || defined(__MINGW64__)
+   WSADATA wsaData;
+   WSAStartup(MAKEWORD(2,2), &wsaData);
+#endif
+
    if (strcmp(argv[1], "-s") == 0) {
        return run_server(PORT);
    } else if (strcmp(argv[1], "-c") == 0) {
@@ -154,4 +193,8 @@ int main(int argc, char **argv) {
        printf("invalid option: %s\n", argv[1]);
        return 1;
    }
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+   WSACleanup();
+#endif
 }

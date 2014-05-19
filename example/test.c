@@ -97,7 +97,7 @@ int run_server(int port)
 	return 1;
     }
 
-    if (listen(listenfd, MAX_CONN) < 0) {
+    if (listen(listenfd, 10) < 0) { // 10 is the number of pending connections
 	print_error("listen");
 	return 1;
     }
@@ -153,7 +153,7 @@ int run_client(char *server, int port)
     int ch = 0;
     int i;
     Multiplex * m = multiplex_new_ex(sockfd, MAX_CONN, USE_SOCKETS);
-    multiplex_enable_range(m, 0, MAX_CONN, 256);
+    multiplex_enable_range(m, 0, MAX_CONN, 0);
 
     srand(time(0));
 

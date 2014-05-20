@@ -497,5 +497,5 @@ func (c *Multiplex) Dup(channelId uint) []byte {
 	defer c.Unlock()
 
 	buf := c.channels[channelId]
-	return append([]byte(nil), buf.data[buf.offset:buf.length]...)
+	return append([]byte(nil), buf.data[buf.offset:buf.offset+buf.length]...)
 }

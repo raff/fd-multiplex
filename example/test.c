@@ -31,8 +31,10 @@ void print_error(const char *msg) {
 #define print_error perror
 #endif
 
-#define PORT 5000
-#define MAX_CONN 4
+#define PORT 2222
+
+//#define MAX_CONN 4
+#define MAX_CONN 255
 
 // 0: read/write, 1: recv/send
 #define USE_SOCKETS 1

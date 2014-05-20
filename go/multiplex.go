@@ -359,6 +359,8 @@ func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
 	dataLength := int((prefixBuffer[0] << 24) | (prefixBuffer[1] << 16) | (prefixBuffer[2] << 8) | (prefixBuffer[3] << 0))
 	channelId := uint(prefixBuffer[4])
 
+	//log.Println("select_channel", "make buffer", dataLength-1, "channel", channelId)
+
 	buffer := make([]byte, dataLength-1)
 	_, err = conn_read(c.conn, timeout, buffer)
 	if err != nil {
@@ -454,6 +456,8 @@ func (c *Multiplex) Send(channelId uint, src []byte) (int, error) {
 		(byte)(channelId & 0xFF)}
 
 	buffer = append(buffer, src...)
+
+	//log.Printf("send %p %d %d %v\n", c, channelId, length, buffer)
 	return c.conn.Write(buffer)
 }
 
@@ -493,5 +497,5 @@ func (c *Multiplex) Dup(channelId uint) []byte {
 	defer c.Unlock()
 
 	buf := c.channels[channelId]
-	return append([]byte(nil), buf.data[buf.offset:]...)
+	return append([]byte(nil), buf.data[buf.offset:buf.length]...)
 }

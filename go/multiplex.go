@@ -436,9 +436,9 @@ func (c *Multiplex) Receive(timeout time.Duration, channelId uint, data []byte) 
 //   SEND LOGIC
 //
 // ----------------------------------------------------------------------
-func (c *Multiplex) Send(channelId uint, src []byte) int {
+func (c *Multiplex) Send(channelId uint, src []byte) (int, error) {
 	if len(src) == 0 {
-		return -1
+		return 0, nil
 	}
 
 	c.Lock()
@@ -446,17 +446,15 @@ func (c *Multiplex) Send(channelId uint, src []byte) int {
 
 	length := len(src) + 1
 
-	header := []byte{
+	buffer := []byte{
 		(byte)((length >> 24) & 0xFF),
 		(byte)((length >> 16) & 0xFF),
 		(byte)((length >> 8) & 0xFF),
 		(byte)((length >> 0) & 0xFF),
 		(byte)(channelId & 0xFF)}
 
-	// TODO: check errors!
-	len1, _ := c.conn.Write(header)
-	len2, _ := c.conn.Write(src)
-	return len1 + len2
+	buffer = append(buffer, src...)
+	return c.conn.Write(buffer)
 }
 
 // ----------------------------------------------------------------------

@@ -77,7 +77,7 @@ func dialAndSend(port string) {
 }
 
 func main() {
-	port := ":2222"
+	port := "127.0.0.1:2222"
 
 	go listenAndServe(port)
 	time.Sleep(1 * time.Second)

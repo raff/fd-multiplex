@@ -1,10 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"../go"
@@ -77,9 +79,33 @@ func dialAndSend(port string) {
 }
 
 func main() {
-	port := "127.0.0.1:2222"
+	mode := flag.String("mode", "client-server", "client, server or client-server")
+	port := flag.String("port", "127.0.0.1:2222", "host:port to use")
 
-	go listenAndServe(port)
-	time.Sleep(1 * time.Second)
-	dialAndSend(port)
+	flag.Parse()
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	if *mode != "client" { // server or client-server
+		go func() {
+			listenAndServe(*port)
+			wg.Done()
+		}()
+	} else {
+		wg.Add(-1)
+	}
+
+	if *mode != "server" { // client or client-server
+		go func() {
+			time.Sleep(1 * time.Second)
+			dialAndSend(*port)
+			wg.Done()
+		}()
+	} else {
+		wg.Add(-1)
+	}
+
+	wg.Wait()
 }

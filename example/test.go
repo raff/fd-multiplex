@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func random_sleep() {
-	t := rand.Intn(1000000)
+	t := rand.Intn(500000) //(1000000)
 	time.Sleep(time.Duration(t) * time.Microsecond)
 }
 
@@ -39,7 +40,9 @@ func receive_multichannel(m *multiplex.Multiplex) {
 func send_multichannel(m *multiplex.Multiplex) {
 	for {
 		ch := rand.Intn(multiplex.MAX_CHANNELS - 1)
-		buffer := fmt.Sprintf("Hello on Channel %d.", ch)
+
+		s := strings.Repeat(fmt.Sprintf("%d ", ch), rand.Intn(50))
+		buffer := fmt.Sprintf("Hello on Channel %s", s)
 
 		m.Send(uint(ch), []byte(buffer))
 		random_sleep()
@@ -69,7 +72,9 @@ func receive_echo(m *multiplex.Multiplex) {
 func send_receive(m *multiplex.Multiplex) {
 	for {
 		ch := rand.Intn(multiplex.MAX_CHANNELS - 1)
-		message := fmt.Sprintf("Echo on Channel %d.", ch)
+		mm := strings.Repeat(fmt.Sprintf("%d ", ch), rand.Intn(50))
+
+		message := fmt.Sprintf("Echo on Channel %s.", mm)
 
 		s, err := m.Send(uint(ch), []byte(message))
                 if err != nil {

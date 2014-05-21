@@ -14,7 +14,7 @@ import (
 )
 
 func random_sleep() {
-	t := rand.Intn(500000) //(1000000)
+	t := rand.Intn(300000) //(1000000)
 	time.Sleep(time.Duration(t) * time.Microsecond)
 }
 

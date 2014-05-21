@@ -192,7 +192,7 @@ func (c *Multiplex) reallocate_channel(channelId uint, additionalDataSize int) b
 	}
 
 	if allocateLen <= len(buf.data) {
-		buf.data = buf.data[:buf.offset+allocateLen]
+		buf.data = buf.data[:allocateLen]
 	} else {
 		newbuf := make([]byte, allocateLen)
 		copy(newbuf, buf.data[buf.offset:buf.offset+buf.length])
@@ -264,6 +264,7 @@ func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 
 	if buf.length < copyLen {
 		copyLen = buf.length
+                dst = dst[:copyLen]
 	}
 
 	copy(dst, buf.data[buf.offset:buf.offset+copyLen])
@@ -367,7 +368,7 @@ func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
 		return 0, err
 	}
 	if c.channels[channelId] == nil {
-		return 0, CHANNEL_IGNORED
+		return channelId, CHANNEL_IGNORED
 	}
 	c.write_channel(channelId, buffer)
 	return channelId, nil

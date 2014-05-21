@@ -82,7 +82,8 @@ func send_receive(m *multiplex.Multiplex) {
                 }
 
                 buffer := make([]byte, len(message))
-                r, err := m.Receive(1000*time.Millisecond, uint(ch), buffer)
+                //r, err := m.Receive(1000*time.Millisecond, uint(ch), buffer)
+                r, err := m.Receive(1*time.Microsecond, uint(ch), buffer)
                 if err != nil {
                     log.Println("send_receive", err)
                 }

@@ -181,8 +181,10 @@ func (c *Multiplex) reallocate_channel(channelId uint, additionalDataSize int) b
 	} else if allocateLen >= newLen { // Case 2: buffer is big enough
 		return true
 	} else if allocateLen >= (buf.length + additionalDataSize) { // Case 3: move data within buffer (set offset to 0)
-		buf.data = buf.data[buf.offset : buf.length+additionalDataSize]
-		buf.offset = 0
+		if buf.offset > 0 {
+			copy(buf.data, buf.data[buf.offset:buf.offset+buf.length])
+			buf.offset = 0
+		}
 		return true
 	}
 
@@ -191,14 +193,10 @@ func (c *Multiplex) reallocate_channel(channelId uint, additionalDataSize int) b
 		allocateLen *= 2
 	}
 
-	if allocateLen <= len(buf.data) {
-		buf.data = buf.data[:allocateLen]
-	} else {
-		newbuf := make([]byte, allocateLen)
-		copy(newbuf, buf.data[buf.offset:buf.offset+buf.length])
-		buf.data = newbuf
-		buf.offset = 0
-	}
+	newbuf := make([]byte, allocateLen)
+	copy(newbuf, buf.data[buf.offset:buf.offset+buf.length])
+	buf.data = newbuf
+	buf.offset = 0
 
 	return true
 }
@@ -264,7 +262,7 @@ func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 
 	if buf.length < copyLen {
 		copyLen = buf.length
-                dst = dst[:copyLen]
+		dst = dst[:copyLen]
 	}
 
 	copy(dst, buf.data[buf.offset:buf.offset+copyLen])
@@ -404,27 +402,32 @@ func (c *Multiplex) receive_channel(timeout time.Duration, channelId uint, dst [
 
 	// Check if data is already buffered.
 	if buf.length > 0 {
-		if length <= buf.length {
-			copy(dst, buf.data[buf.offset:])
-			buf.offset += length
-			buf.length -= length
-			return length, nil
-		} else {
-			tmpLen := buf.length
-			copy(dst, buf.data[buf.offset:buf.offset+tmpLen])
-			buf.offset = 0
-			buf.length = 0
-			return tmpLen, nil
+		if length >= buf.length {
+			length = buf.length
 		}
+
+		copy(dst, buf.data[buf.offset:buf.offset+length])
+		buf.offset += length
+		buf.length -= length
+		return length, nil
 	}
 
 	// Receive on the given Channel
-	receiveId, err := c.select_channel(timeout)
-	if err != nil {
-		return 0, err
-	}
-	if receiveId != channelId {
-		return 0, CHANNEL_IGNORED
+	t := time.Now().Add(timeout)
+
+	for {
+		receiveId, err := c.select_channel(timeout)
+		if err != nil {
+			return 0, err
+		}
+
+		if receiveId == channelId {
+			break
+		}
+
+		if time.Now().After(t) {
+			return 0, CHANNEL_TIMEOUT
+		}
 	}
 
 	// Copy from ChannelBuffer

@@ -14,7 +14,7 @@ LIB=$(BIN)/fd-multiplex.a
 SOURCES=$(shell find "$(SRC)" -type f -name "*.c")
 OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 CINCLUDES=-I "$(SRC)"
-CLIBRARIES=-lpthread
+CLIBRARIES=-lpthread -lwsock32
 
 # Example
 EX=$(CURDIR)/example

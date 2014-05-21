@@ -275,6 +275,9 @@ func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 	if buf.newData < 0 {
 		buf.newData = 0
 	}
+	if buf.length == 0 {
+		buf.offset = 0
+	}
 
 	return copyLen, nil
 }

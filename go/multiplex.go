@@ -347,12 +347,19 @@ func conn_read(conn net.Conn, timeout time.Duration, buffer []byte) (int, error)
 	return position, nil
 }
 
-func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
+func (c *Multiplex) select_channel(timeout time.Duration, channelId uint) (uint, error) {
 	if c == nil {
 		return 0, CHANNEL_CLOSED
 	}
 
 	// Check if data is available somewhere
+	if channelId < c.max_channels {
+		if buf := c.channels[channelId]; buf != nil && buf.length > 0 && buf.newData != 0 {
+			buf.newData = 0
+			return channelId, nil
+		}
+	}
+
 	for i := 0; i < int(c.max_channels); i++ {
 		if buf := c.channels[i]; buf != nil && buf.length > 0 && buf.newData != 0 {
 			buf.newData = 0
@@ -372,15 +379,15 @@ func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
 	}
 
 	/*
-		if prefixBuffer[0] != magic {
-			log.Println("expected", magic, "got", prefixBuffer)
-	                return 0, CHANNEL_IGNORED
-		}
+			if prefixBuffer[0] != magic {
+				log.Println("expected", magic, "got", prefixBuffer)
+		                return 0, CHANNEL_IGNORED
+			}
 	*/
 
 	//
 	dataLength := int(prefixBuffer[0])<<24 | int(prefixBuffer[1])<<16 | int(prefixBuffer[2])<<8 | int(prefixBuffer[3])<<0
-	channelId := uint(prefixBuffer[4])
+	channelId = uint(prefixBuffer[4])
 
 	buffer := make([]byte, dataLength-1)
 	start := 0
@@ -406,7 +413,7 @@ func (c *Multiplex) Select(timeout time.Duration) (uint, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	return c.select_channel(timeout)
+	return c.select_channel(timeout, c.max_channels)
 }
 
 func (c *Multiplex) Ignore(channelId uint) {
@@ -439,23 +446,33 @@ func (c *Multiplex) receive_channel(timeout time.Duration, channelId uint, dst [
 		return length, nil
 	}
 
-	receiveId, err := c.select_channel(timeout)
-	if err != nil {
-		return 0, err
-	}
+        receiveId, err := c.select_channel(timeout, channelId)
+        if err != nil {
+                return 0, err
+        }
 
-	if receiveId != channelId {
-		return 0, CHANNEL_IGNORED
-	}
+        if receiveId != channelId {
+                return 0, CHANNEL_IGNORED
+        }
 
 	// Copy from ChannelBuffer
 	return c.read_channel(channelId, dst)
 }
 
 func (c *Multiplex) Receive(timeout time.Duration, channelId uint, data []byte) (int, error) {
-	c.Lock()
-	defer c.Unlock()
-	return c.receive_channel(timeout, channelId, data)
+        for {
+	    c.Lock()
+	    n, err := c.receive_channel(timeout, channelId, data)
+            if err != CHANNEL_IGNORED {
+                c.Unlock()
+                return n, err
+            }
+
+            c.Unlock()
+        }
+
+        // unreachable
+        return 0, CHANNEL_IGNORED
 }
 
 // ----------------------------------------------------------------------

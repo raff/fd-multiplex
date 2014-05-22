@@ -318,9 +318,9 @@ func (c *Multiplex) Clear(channelId uint) {
 //
 // ----------------------------------------------------------------------
 func conn_read(conn net.Conn, timeout time.Duration, buffer []byte) (int, error) {
-        if timeout != time.Duration(0) {
-	    conn.SetReadDeadline(time.Now().Add(timeout))
-        }
+	if timeout != time.Duration(0) {
+		conn.SetReadDeadline(time.Now().Add(timeout))
+	}
 
 	position := 0
 	length := len(buffer)
@@ -368,33 +368,32 @@ func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
 	}
 	if n != headerLength {
 		log.Println("expected", headerLength, "read", n)
-                return 0, CHANNEL_IGNORED
+		return 0, CHANNEL_IGNORED
 	}
 
-        /*
-	if prefixBuffer[0] != magic {
-		log.Println("expected", magic, "got", prefixBuffer)
-                return 0, CHANNEL_IGNORED
-	}
-        */
+	/*
+		if prefixBuffer[0] != magic {
+			log.Println("expected", magic, "got", prefixBuffer)
+	                return 0, CHANNEL_IGNORED
+		}
+	*/
 
 	//
-	dataLength := int(prefixBuffer[0]) << 24 | int(prefixBuffer[1]) << 16 | int(prefixBuffer[2]) << 8 | int(prefixBuffer[3]) << 0
+	dataLength := int(prefixBuffer[0])<<24 | int(prefixBuffer[1])<<16 | int(prefixBuffer[2])<<8 | int(prefixBuffer[3])<<0
 	channelId := uint(prefixBuffer[4])
 
-
 	buffer := make([]byte, dataLength-1)
-        start := 0
-        for start < dataLength-1 {
-	    n, err = conn_read(c.conn, time.Duration(0), buffer[start:])
-	    if err != nil {
-                return 0, err
-	    }
-            if n == 0 {
-                log.Println("select_channel", "expected", len(buffer)-start, "got 0")
-            }
-            start += n
-        }
+	start := 0
+	for start < dataLength-1 {
+		n, err = conn_read(c.conn, time.Duration(0), buffer[start:])
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			log.Println("select_channel", "expected", len(buffer)-start, "got 0")
+		}
+		start += n
+	}
 
 	if c.channels[channelId] == nil {
 		return channelId, CHANNEL_IGNORED
@@ -488,8 +487,8 @@ func (c *Multiplex) Send(channelId uint, src []byte) (int, error) {
 	if n != len(buffer) || err != nil {
 		log.Println("sent ", n, "expected", len(buffer), err)
 	} else {
-                n -= headerLength
-        }
+		n -= headerLength
+	}
 
 	return n, err
 }

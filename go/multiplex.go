@@ -43,9 +43,8 @@ package multiplex
 // is not active") are negative, while channel IDs are positive or zero.
 
 import (
-	"errors"
 	"io"
-	//"log"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -54,12 +53,21 @@ import (
 const (
 	INITIAL_BUFFER_SIZE = 256
 	MAX_CHANNELS        = 256
+
+	headerLength = 5 // 6 // 1:magic + 4:size + 1:channel
+	magic        = 0x69
 )
 
+type MultiplexError string
+
+func (e MultiplexError) Error() string {
+	return "multiplex error: " + string(e)
+}
+
 var (
-	CHANNEL_IGNORED = errors.New("channel ignored")
-	CHANNEL_TIMEOUT = errors.New("channel timeout")
-	CHANNEL_CLOSED  = errors.New("channel closed")
+	CHANNEL_IGNORED = MultiplexError("channel ignored")
+	CHANNEL_TIMEOUT = MultiplexError("channel timeout")
+	CHANNEL_CLOSED  = MultiplexError("channel closed")
 )
 
 type ChannelBuffer struct {
@@ -254,7 +262,6 @@ func (c *Multiplex) Copy(channelId uint, dst []byte) (int, error) {
 func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 	buf := c.channels[channelId]
 	if buf == nil {
-		//log.Println("read_channel", channelId, "IGNORED")
 		return 0, CHANNEL_IGNORED
 	}
 
@@ -273,7 +280,9 @@ func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 	if buf.newData < 0 {
 		buf.newData = 0
 	}
-	if buf.length == 0 {
+	if buf.length <= 0 {
+		buf.length = 0
+		buf.newData = 0
 		buf.offset = 0
 	}
 
@@ -282,7 +291,6 @@ func (c *Multiplex) read_channel(channelId uint, dst []byte) (int, error) {
 
 func (c *Multiplex) Read(channelId uint, dst []byte) (int, error) {
 	if !c.lock_channel(channelId) {
-		//log.Println("Read", channelId, "IGNORED")
 		return 0, CHANNEL_CLOSED
 	}
 
@@ -310,31 +318,33 @@ func (c *Multiplex) Clear(channelId uint) {
 //
 // ----------------------------------------------------------------------
 func conn_read(conn net.Conn, timeout time.Duration, buffer []byte) (int, error) {
+        if timeout != time.Duration(0) {
+	    conn.SetReadDeadline(time.Now().Add(timeout))
+        }
+
 	position := 0
 	length := len(buffer)
 
-	conn.SetReadDeadline(time.Now().Add(timeout))
-
 	for position < length {
 		bytesRead, err := conn.Read(buffer[position:])
-		//log.Println("conn_read", "read", bytesRead, "error", err)
 		if err != nil {
 			if err == io.EOF {
-				//log.Println("conn_read", "CLOSED")
+				log.Println("conn_read", "CLOSED")
 				return 0, CHANNEL_CLOSED
 			} else if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				//log.Println("conn_read", "TIMEOUT")
+				log.Println("conn_read", "TIMEOUT")
 				return 0, CHANNEL_TIMEOUT
 			} else {
 				// we should do better than this
-				//log.Println("conn_read", err)
+				log.Println("conn_read", err)
 				return 0, CHANNEL_CLOSED
 			}
 		} else {
 			position += bytesRead
 		}
 	}
-	return length, nil
+
+	return position, nil
 }
 
 func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
@@ -351,23 +361,41 @@ func (c *Multiplex) select_channel(timeout time.Duration) (uint, error) {
 	}
 
 	//
-	var prefixBuffer [5]byte
-	_, err := conn_read(c.conn, timeout, prefixBuffer[:])
+	var prefixBuffer [headerLength]byte
+	n, err := conn_read(c.conn, timeout, prefixBuffer[:])
 	if err != nil {
 		return 0, err
 	}
+	if n != headerLength {
+		log.Println("expected", headerLength, "read", n)
+                return 0, CHANNEL_IGNORED
+	}
+
+        /*
+	if prefixBuffer[0] != magic {
+		log.Println("expected", magic, "got", prefixBuffer)
+                return 0, CHANNEL_IGNORED
+	}
+        */
 
 	//
-	dataLength := int((prefixBuffer[0] << 24) | (prefixBuffer[1] << 16) | (prefixBuffer[2] << 8) | (prefixBuffer[3] << 0))
+	dataLength := int(prefixBuffer[0]) << 24 | int(prefixBuffer[1]) << 16 | int(prefixBuffer[2]) << 8 | int(prefixBuffer[3]) << 0
 	channelId := uint(prefixBuffer[4])
 
-	//log.Println("select_channel", "make buffer", dataLength-1, "channel", channelId)
 
 	buffer := make([]byte, dataLength-1)
-	_, err = conn_read(c.conn, timeout, buffer)
-	if err != nil {
-		return 0, err
-	}
+        start := 0
+        for start < dataLength-1 {
+	    n, err = conn_read(c.conn, time.Duration(0), buffer[start:])
+	    if err != nil {
+                return 0, err
+	    }
+            if n == 0 {
+                log.Println("select_channel", "expected", len(buffer)-start, "got 0")
+            }
+            start += n
+        }
+
 	if c.channels[channelId] == nil {
 		return channelId, CHANNEL_IGNORED
 	}
@@ -412,22 +440,13 @@ func (c *Multiplex) receive_channel(timeout time.Duration, channelId uint, dst [
 		return length, nil
 	}
 
-	// Receive on the given Channel
-	t := time.Now().Add(timeout)
+	receiveId, err := c.select_channel(timeout)
+	if err != nil {
+		return 0, err
+	}
 
-	for {
-		receiveId, err := c.select_channel(timeout)
-		if err != nil {
-			return 0, err
-		}
-
-		if receiveId == channelId {
-			break
-		}
-
-		if time.Now().After(t) {
-			return 0, CHANNEL_TIMEOUT
-		}
+	if receiveId != channelId {
+		return 0, CHANNEL_IGNORED
 	}
 
 	// Copy from ChannelBuffer
@@ -456,6 +475,7 @@ func (c *Multiplex) Send(channelId uint, src []byte) (int, error) {
 	length := len(src) + 1
 
 	buffer := []byte{
+		//magic,
 		(byte)((length >> 24) & 0xFF),
 		(byte)((length >> 16) & 0xFF),
 		(byte)((length >> 8) & 0xFF),
@@ -464,8 +484,14 @@ func (c *Multiplex) Send(channelId uint, src []byte) (int, error) {
 
 	buffer = append(buffer, src...)
 
-	//log.Printf("send %p %d %d %v\n", c, channelId, length, buffer)
-	return c.conn.Write(buffer)
+	n, err := c.conn.Write(buffer)
+	if n != len(buffer) || err != nil {
+		log.Println("sent ", n, "expected", len(buffer), err)
+	} else {
+                n -= headerLength
+        }
+
+	return n, err
 }
 
 // ----------------------------------------------------------------------

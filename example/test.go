@@ -1,7 +1,7 @@
 package main
 
 import (
-        "flag"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -41,7 +41,7 @@ func send_multichannel(m *multiplex.Multiplex) {
 	for {
 		ch := rand.Intn(multiplex.MAX_CHANNELS - 1)
 
-		s := strings.Repeat(fmt.Sprintf("%d ", ch), rand.Intn(50))
+		s := strings.Repeat(fmt.Sprintf("%d ", ch), rand.Intn(2000))
 		buffer := fmt.Sprintf("Hello on Channel %s", s)
 
 		m.Send(uint(ch), []byte(buffer))
@@ -77,18 +77,18 @@ func send_receive(m *multiplex.Multiplex) {
 		message := fmt.Sprintf("Echo on Channel %s.", mm)
 
 		s, err := m.Send(uint(ch), []byte(message))
-                if err != nil {
-                    log.Println("send_receive", err)
-                }
+		if err != nil {
+			log.Println("send_receive", err)
+		}
 
-                buffer := make([]byte, len(message))
-                //r, err := m.Receive(1000*time.Millisecond, uint(ch), buffer)
-                r, err := m.Receive(1*time.Microsecond, uint(ch), buffer)
-                if err != nil {
-                    log.Println("send_receive", err)
-                }
+		buffer := make([]byte, len(message))
+		//r, err := m.Receive(1000*time.Millisecond, uint(ch), buffer)
+		r, err := m.Receive(1*time.Microsecond, uint(ch), buffer)
+		if err != nil {
+			log.Println("send_receive", err)
+		}
 
-                log.Println("sent", s, "received", r, string(buffer))
+		log.Println("sent", s, "received", r, string(buffer))
 		random_sleep()
 	}
 }
@@ -110,7 +110,7 @@ func listenAndServe(port string, processor Processor) {
 
 		m := multiplex.NewMultiplex(conn)
 		m.EnableRange(0, multiplex.MAX_CHANNELS-1, 0)
-                processor(m)
+		processor(m)
 	}
 }
 
@@ -128,18 +128,18 @@ func dialAndSend(port string, processor Processor) {
 
 func main() {
 	mode := flag.String("mode", "client-server", "client, server or client-server")
-        run := flag.String("run", "multichannel", "test to run: multichannel, echo, ...")
+	run := flag.String("run", "multichannel", "test to run: multichannel, echo, ...")
 	port := flag.String("port", "127.0.0.1:2222", "host:port to use")
 
 	flag.Parse()
 
-        send_processor := send_multichannel
-        receive_processor := receive_multichannel
+	send_processor := send_multichannel
+	receive_processor := receive_multichannel
 
-        if *run == "echo" {
-            send_processor = send_receive
-            receive_processor = receive_echo
-        }
+	if *run == "echo" {
+		send_processor = send_receive
+		receive_processor = receive_echo
+	}
 
 	var wg sync.WaitGroup
 

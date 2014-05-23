@@ -13,7 +13,11 @@ import (
 )
 
 const (
-	MAX_CONN = 2
+	MAX_CONN = 64
+)
+
+var (
+	WRITE_TIMEOUT = 5 * time.Second
 )
 
 func random_sleep() {
@@ -28,19 +32,56 @@ func receive_echo(m *multiplex.Multiplex, channelId uint) {
 	buffer := make([]byte, 1024)
 
 	for {
-		log.Println("receive_echo", "read", channelId)
+		log.Println("receive_echo", channelId, "reading...")
 
 		if n, err := stream.Read(buffer); err == multiplex.CHANNEL_CLOSED {
-			log.Println("receive_echo", "Select", "CLOSED")
+			log.Println("receive_echo", channelId, "Read", "CLOSED")
 			break
 		} else if err != nil {
-			log.Println("receive_echo", channelId, "Select", err)
+			log.Println("receive_echo", channelId, "Read", err)
 		} else {
-			log.Println("receive_echo", channelId, buffer[:n])
+			log.Println("receive_echo", channelId, string(buffer[:n]))
+			stream.SetWriteDeadline(time.Now().Add(WRITE_TIMEOUT))
 			stream.Write(buffer[:n])
-			random_sleep()
 		}
+
+		random_sleep()
 	}
+
+	log.Println("receive_echo", channelId, "Terminated")
+}
+
+func send_echo(m *multiplex.Multiplex, channelId uint) {
+	log.Println("send_echo for", channelId)
+
+	stream := multiplex.NewStream(m, channelId)
+
+	for {
+		log.Println("send_echo", channelId, "writing...")
+
+		message := fmt.Sprintf("Echo on Channel %d "+
+			"the quick brown fox jumps over the lazy dog. ", channelId)
+		message = strings.Repeat(message, rand.Intn(1000))
+
+		stream.SetWriteDeadline(time.Now().Add(WRITE_TIMEOUT))
+		if s, err := stream.Write([]byte(message)); err == multiplex.CHANNEL_CLOSED {
+			log.Println("send_echo", channelId, "Write", "CLOSED")
+		} else if err != nil {
+			log.Println("send_echo", channelId, "Write", err)
+		} else {
+			buffer := make([]byte, len(message))
+			r, err := stream.Read(buffer)
+			if err != nil {
+				log.Println("send_echo", channelId, "Read", err)
+			} else {
+				log.Println("send_echo", channelId, "sent", s, "received", r, string(buffer[:r]))
+			}
+		}
+
+		random_sleep()
+	}
+
+	log.Println("send_echo", channelId, "Terminated")
 }
 
 func send_receive(m *multiplex.Multiplex) {
@@ -58,9 +99,9 @@ func send_receive(m *multiplex.Multiplex) {
 		r, err := m.Receive(time.Duration(10000)*time.Millisecond, uint(ch), buffer)
 		if err != nil {
 			log.Println("send_receive", "Receive", err)
+		} else {
+			log.Println("send_receive", ch, "sent", s, "received", r, string(buffer[:r]))
 		}
-
-		log.Println("send_receive", ch, "sent", s, "received", r, string(buffer[:r]))
 		random_sleep()
 	}
 }
@@ -100,7 +141,16 @@ func dialAndSend(port string) {
 
 	m := multiplex.NewMultiplex(c)
 	m.EnableRange(0, MAX_CONN-1, 0)
-	send_receive(m)
+
+	if false {
+		send_receive(m)
+	} else {
+		for i := 0; i < MAX_CONN; i++ {
+			go send_echo(m, uint(i))
+		}
+
+		m.RunLoop()
+	}
 }
 
 func main() {

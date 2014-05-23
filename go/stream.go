@@ -32,12 +32,11 @@ type Stream struct {
 	*Multiplex               // the underlying multiplexor
 	ch             uint      // the selected channel
 	read_deadline  time.Time // current read timeout
-	write_deadline time.Time // current write timeout
 }
 
 func NewStream(m *Multiplex, channelId uint) *Stream {
 	if channelId < MAX_CHANNELS {
-		return &Stream{m, channelId, NO_DEADLINE, NO_DEADLINE}
+		return &Stream{m, channelId, NO_DEADLINE}
 	} else {
 		return nil
 	}
@@ -98,8 +97,8 @@ func (s *Stream) SetReadDeadline(t time.Time) error {
 }
 
 func (s *Stream) SetWriteDeadline(t time.Time) error {
-	s.write_deadline = t
-	return nil
+        // since we write directly, we can just set the connection write deadline
+	return s.conn.SetWriteDeadline(t)
 }
 
 func (m *Multiplex) RunLoop() {

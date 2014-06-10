@@ -89,6 +89,7 @@ int multiplex_copy(Multiplex * c, unsigned char channelId, char * dst, int offse
 
 // -- clear buffer
 void multiplex_clear(Multiplex * c, unsigned char channelId);
+void multiplex_clear_length(Multiplex * c, unsigned char channelId, int length);
 
 // -- remove select status, keep data
 void multiplex_ignore(Multiplex * c, unsigned char channelId);

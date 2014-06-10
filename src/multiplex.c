@@ -276,16 +276,30 @@ int multiplex_read(Multiplex * c, unsigned char channelId, char * dst, int offse
     }
 }
 
-static void _clear_channel(Multiplex * c, unsigned char channelId) {
+static void _clear_channel(Multiplex * c, unsigned char channelId, int length) {
     ChannelBuffer * buf = c->channels[channelId];
-    buf->offset = 0;
-    buf->length = 0;
-    buf->newData = 0;
+    if (length < 0) {
+        buf->offset = 0;
+        buf->length = 0;
+        buf->newData = 0;
+    } else {
+        buf->offset += length;
+        buf->length -= length;
+        buf->newData -= length;
+        if (buf->newData < 0) buf->newData = 0;
+    }
 }
 
 void multiplex_clear(Multiplex * c, unsigned char channelId) {
     if (multiplex_lock_channel(c, channelId) == 0) {
-        _clear_channel(c, channelId);
+        _clear_channel(c, channelId, -1);
+        multiplex_unlock(c);
+    }
+}
+
+void multiplex_clear_length(Multiplex * c, unsigned char channelId, int length) {
+    if (multiplex_lock_channel(c, channelId) == 0) {
+        _clear_channel(c, channelId, length);
         multiplex_unlock(c);
     }
 }
@@ -449,6 +463,11 @@ int multiplex_send(Multiplex * c, unsigned char channelId, char const * src, int
 	    len = write(c->fd, buffer, 5 + length);
 	}
         multiplex_unlock(c);
+
+	if (len > 5) {
+	    len -= 5; // remove sizeof(header)
+	}
+
         return len;
     }
 }

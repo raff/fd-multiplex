@@ -337,7 +337,7 @@ static int _fd_read(int fd, int is_socket, int timeoutMs, char * buffer, int len
 }
 
 static int _select_channel(Multiplex * c, int timeoutMs) {
-    char prefixBuffer[5];
+    unsigned char prefixBuffer[5];
     int bytesRead = 0, dataLength = 0;
     unsigned char channelId = 0;
 
@@ -358,7 +358,7 @@ static int _select_channel(Multiplex * c, int timeoutMs) {
     }
 
     //
-    bytesRead = _fd_read(c->fd, c->is_socket, timeoutMs, prefixBuffer, 5);
+    bytesRead = _fd_read(c->fd, c->is_socket, timeoutMs, (char *)prefixBuffer, 5);
     if (bytesRead != 5) return bytesRead;
 
     //
